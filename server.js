@@ -1,5 +1,6 @@
 const express = require('express');
 const http = require('http');
+const path = require('path');
 const { Server } = require('socket.io');
 
 const app = express();
@@ -11,7 +12,13 @@ const io = new Server(server, {
   }
 });
 
-app.use(express.static('public'));
+// absolute path for static files
+app.use(express.static(path.join(__dirname, 'public')));
+
+// send index.html for any request
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
 
 let waitingUser = null;
 let onlineUsers = 0;
