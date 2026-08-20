@@ -7,13 +7,14 @@ const app = express();
 const server = http.createServer(app);
 
 app.use(express.static(path.join(__dirname, 'public')));
-
-app.use((req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
+app.use((req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 const io = new Server(server, { cors: { origin: "*" } });
 
+// 가상 회원 DB (개발자 계정 기본 등록)
+let users = {
+  '이한률': '1218'
+}; 
 let waitingQueue = [];
 let onlineUsers = 0;
 let bannedIPs = new Set();
@@ -37,7 +38,6 @@ function matchQueue() {
     user1.emit('matched');
     user2.emit('matched');
 
-    // 관리자 방에 매칭 상황 알림
     io.to('admin_room').emit('admin_match_event', {
       u1: { id: user1.userId, ip: user1.ipAddr },
       u2: { id: user2.userId, ip: user2.ipAddr }
@@ -63,18 +63,52 @@ io.on('connection', (socket) => {
   const ip = getClientIp(socket);
   socket.ipAddr = ip;
 
-  // 차단된 IP 거부
   if (bannedIPs.has(ip)) {
     socket.emit('banned');
     socket.disconnect();
     return;
   }
 
-  // 로그인 처리
-  socket.on('login', (data) => {
-    socket.userId = data.userId || '익명';
+  // 회원가입 처리
+  socket.on('register', ({ userId, userPw }) => {
+    if (!userId || !userPw) {
+      return socket.emit('auth_error', '아이디와 비밀번호를 모두 입력해 주세요.');
+    }
+    if (users[userId]) {
+      return socket.emit('auth_error', '이미 존재하는 아이디입니다.');
+    }
+    users[userId] = userPw;
+    socket.emit('register_success', '회원가입이 완료되었습니다! 로그인해 주세요.');
+  });
+
+  // 로그인 검증 처리
+  socket.on('login', ({ userId, userPw }) => {
+    if (!userId || !userPw) {
+      return socket.emit('auth_error', '아이디와 비밀번호를 입력해 주세요.');
+    }
+    if (!users[userId]) {
+      return socket.emit('auth_error', '존재하지 않는 아이디입니다. 회원가입을 진행해 주세요.');
+    }
+    if (users[userId] !== userPw) {
+      return socket.emit('auth_error', '비밀번호가 일치하지 않습니다.');
+    }
+
+    socket.userId = userId;
+
+    // 개발자 전용 계정 승인
+    if (userId === '이한률' && userPw === '1218') {
+      socket.isAdmin = true;
+      socket.join('admin_room');
+      socket.emit('admin_login_success', {
+        bannedIPs: Array.from(bannedIPs)
+      });
+      return;
+    }
+
+    // 일반 유저 접속
     onlineUsers++;
     io.emit('userCount', onlineUsers);
+    socket.emit('login_success', { userId });
 
     waitingQueue.push(socket);
     socket.emit('waiting');
@@ -82,19 +116,9 @@ io.on('connection', (socket) => {
   });
 
   socket.on('message', (msg) => {
-    // 0009 입력 시 개발자 모드 승인
-    if (msg.trim() === '0009') {
-      socket.join('admin_room');
-      socket.emit('admin_approved', {
-        bannedIPs: Array.from(bannedIPs)
-      });
-      return;
-    }
-
     if (socket.partner) {
       socket.partner.emit('message', msg);
 
-      // 개발자 패널로 실시간 대화 전송
       io.to('admin_room').emit('admin_chat_log', {
         fromId: socket.userId,
         fromIp: socket.ipAddr,
@@ -105,9 +129,9 @@ io.on('connection', (socket) => {
     }
   });
 
-  // 관리자 기능: IP 차단
+  // 관리자 전용: IP 차단
   socket.on('admin_ban_ip', (targetIp) => {
-    if (!socket.rooms.has('admin_room')) return;
+    if (!socket.isAdmin) return;
     bannedIPs.add(targetIp);
 
     for (let [id, sock] of io.sockets.sockets) {
@@ -119,14 +143,15 @@ io.on('connection', (socket) => {
     io.to('admin_room').emit('admin_ban_updated', Array.from(bannedIPs));
   });
 
-  // 관리자 기능: IP 차단 해제
+  // 관리자 전용: IP 차단 해제
   socket.on('admin_unban_ip', (targetIp) => {
-    if (!socket.rooms.has('admin_room')) return;
+    if (!socket.isAdmin) return;
     bannedIPs.delete(targetIp);
     io.to('admin_room').emit('admin_ban_updated', Array.from(bannedIPs));
   });
 
   socket.on('findNext', () => {
+    if (socket.isAdmin) return;
     disconnectPartner(socket);
     removeFromQueue(socket);
     waitingQueue.push(socket);
@@ -135,13 +160,14 @@ io.on('connection', (socket) => {
   });
 
   socket.on('leave', () => {
+    if (socket.isAdmin) return;
     disconnectPartner(socket);
     removeFromQueue(socket);
     socket.emit('ended');
   });
 
   socket.on('disconnect', () => {
-    if (socket.userId) {
+    if (socket.userId && !socket.isAdmin) {
       onlineUsers = Math.max(0, onlineUsers - 1);
       io.emit('userCount', onlineUsers);
     }

@@ -9,17 +9,20 @@
     body { font-family: -apple-system, sans-serif; background: #e2e8f0; display: flex; justify-content: center; height: 100dvh; }
     .app-container { width: 100%; max-width: 480px; height: 100dvh; background: #f4f6f8; display: flex; flex-direction: column; position: relative; }
     
-    /* 가상 로그인 모달 */
-    .login-overlay { position: absolute; inset: 0; background: rgba(15, 23, 42, 0.9); z-index: 100; display: flex; justify-content: center; align-items: center; padding: 20px; }
-    .login-card { background: #fff; width: 100%; max-width: 320px; padding: 24px; border-radius: 16px; display: flex; flex-direction: column; gap: 12px; text-align: center; }
-    .login-card h2 { color: #1e293b; font-size: 1.25rem; }
-    .login-card input { width: 100%; height: 42px; padding: 0 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; }
-    .login-card button { height: 42px; background: #2563eb; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
+    /* Auth 모달 */
+    .auth-overlay { position: absolute; inset: 0; background: #0f172a; z-index: 100; display: flex; justify-content: center; align-items: center; padding: 20px; }
+    .auth-card { background: #fff; width: 100%; max-width: 320px; padding: 24px; border-radius: 16px; display: flex; flex-direction: column; gap: 12px; text-align: center; }
+    .auth-tabs { display: flex; border-bottom: 2px solid #e2e8f0; margin-bottom: 8px; }
+    .auth-tab { flex: 1; padding: 8px; font-weight: bold; color: #64748b; cursor: pointer; }
+    .auth-tab.active { color: #2563eb; border-bottom: 2px solid #2563eb; margin-bottom: -2px; }
+    .auth-card input { width: 100%; height: 42px; padding: 0 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; }
+    .auth-card button { height: 42px; background: #2563eb; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
 
+    /* 화면 분기 */
+    .chat-screen { display: flex; flex-direction: column; height: 100%; width: 100%; }
     .header { background: #1e293b; color: #fff; padding: 12px; display: flex; justify-content: space-between; align-items: center; }
     .brand h1 { font-size: 1.1rem; }
     .user-badge { font-size: 0.8rem; color: #38bdf8; background: #334155; padding: 4px 8px; border-radius: 6px; }
-    
     .status-bar { background: #fff; color: #64748b; font-size: 0.8rem; text-align: center; padding: 6px; border-bottom: 1px solid #e2e8f0; }
     .chat-box { flex: 1; padding: 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
     .msg-group { display: flex; flex-direction: column; max-width: 80%; }
@@ -29,14 +32,6 @@
     .msg-group.my .msg-bubble { background: #2563eb; color: #fff; }
     .msg-group.partner .msg-bubble { background: #fff; color: #0f172a; border: 1px solid #e2e8f0; }
     .msg-system { align-self: center; background: #cbd5e1; font-size: 0.75rem; padding: 4px 8px; border-radius: 8px; }
-
-    /* 개발자 패널 */
-    .admin-panel { display: none; background: #0f172a; color: #38bdf8; padding: 10px; max-height: 200px; overflow-y: auto; font-size: 0.75rem; border-top: 2px solid #ef4444; }
-    .admin-panel h3 { color: #ef4444; margin-bottom: 6px; }
-    .admin-log { background: #1e293b; padding: 6px; margin-bottom: 4px; border-radius: 4px; }
-    .ban-btn { background: #ef4444; color: white; border: none; padding: 2px 6px; border-radius: 4px; cursor: pointer; margin-left: 6px; }
-    .unban-btn { background: #10b981; color: white; border: none; padding: 2px 6px; border-radius: 4px; cursor: pointer; margin-left: 6px; }
-
     .bottom-panel { background: #fff; padding: 10px; border-top: 1px solid #e2e8f0; display: flex; flex-direction: column; gap: 6px; }
     .input-row { display: flex; gap: 6px; }
     input[type="text"] { flex: 1; height: 40px; padding: 0 10px; border: 1px solid #cbd5e1; border-radius: 20px; font-size: 16px; }
@@ -45,46 +40,69 @@
     .action-row { display: flex; gap: 6px; }
     .btn-next { flex: 1; background: #10b981; color: white; }
     .btn-leave { flex: 1; background: #ef4444; color: white; }
+
+    /* 관리자 대시보드 */
+    .admin-screen { display: none; flex-direction: column; height: 100%; width: 100%; background: #0f172a; color: #f8fafc; padding: 12px; }
+    .admin-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #ef4444; padding-bottom: 8px; margin-bottom: 12px; }
+    .admin-header h2 { color: #ef4444; font-size: 1.1rem; }
+    .admin-section { margin-bottom: 12px; background: #1e293b; padding: 10px; border-radius: 8px; }
+    .admin-section h3 { font-size: 0.85rem; color: #38bdf8; margin-bottom: 6px; }
+    .admin-logs { height: 260px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; font-size: 0.8rem; }
+    .log-item { background: #334155; padding: 8px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; }
+    .ban-btn { background: #ef4444; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 0.75rem; }
+    .unban-btn { background: #10b981; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 0.75rem; }
   </style>
 </head>
 <body>
 
   <div class="app-container">
-    <!-- 가상 로그인 모달 -->
-    <div class="login-overlay" id="loginOverlay">
-      <div class="login-card">
-        <h2>수공라이브 로그인</h2>
-        <input type="text" id="loginId" placeholder="아이디 입력 (아무거나 가능)" />
-        <input type="password" id="loginPw" placeholder="비밀번호 입력 (아무거나 가능)" />
-        <button id="loginBtn">입장하기</button>
+    <!-- 로그인/회원가입 모달 -->
+    <div class="auth-overlay" id="authOverlay">
+      <div class="auth-card">
+        <div class="auth-tabs">
+          <div class="auth-tab active" id="tabLogin">로그인</div>
+          <div class="auth-tab" id="tabRegister">회원가입</div>
+        </div>
+        <input type="text" id="authId" placeholder="아이디" />
+        <input type="password" id="authPw" placeholder="비밀번호" />
+        <button id="authBtn">로그인</button>
       </div>
     </div>
 
-    <div class="header">
-      <div class="brand"><h1>수공라이브</h1></div>
-      <div class="user-badge" id="userBadge">비로그인</div>
-    </div>
-
-    <div class="status-bar" id="status">로그인이 필요합니다.</div>
-
-    <!-- 개발자 패널 (0009) -->
-    <div class="admin-panel" id="adminPanel">
-      <h3>🛡️ 개발자 모드 (HR)</h3>
-      <div id="adminLogs"></div>
-      <h4 style="margin-top:8px;">차단된 IP 목록</h4>
-      <div id="bannedList"></div>
-    </div>
-
-    <div class="chat-box" id="chatBox"></div>
-
-    <div class="bottom-panel">
-      <div class="input-row">
-        <input type="text" id="msgInput" placeholder="메시지 입력 (0009: 관리자)" disabled autocomplete="off">
-        <button class="btn-send" id="sendBtn" disabled>전송</button>
+    <!-- 일반 채팅 화면 -->
+    <div class="chat-screen" id="chatScreen">
+      <div class="header">
+        <div class="brand"><h1>수공라이브</h1></div>
+        <div class="user-badge" id="userBadge">비로그인</div>
       </div>
-      <div class="action-row">
-        <button class="btn-next" id="nextBtn">다음 상대</button>
-        <button class="btn-leave" id="leaveBtn">대화 종료</button>
+      <div class="status-bar" id="status">로그인 대기 중</div>
+      <div class="chat-box" id="chatBox"></div>
+      <div class="bottom-panel">
+        <div class="input-row">
+          <input type="text" id="msgInput" placeholder="메시지 입력..." disabled autocomplete="off">
+          <button class="btn-send" id="sendBtn" disabled>전송</button>
+        </div>
+        <div class="action-row">
+          <button class="btn-next" id="nextBtn">다음 상대</button>
+          <button class="btn-leave" id="leaveBtn">대화 종료</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 개발자 통제 대시보드 화면 -->
+    <div class="admin-screen" id="adminScreen">
+      <div class="admin-header">
+        <h2>🛡️ 수공라이브 관리자 대시보드 (HR)</h2>
+      </div>
+      
+      <div class="admin-section">
+        <h3>실시간 대화 모니터링 & IP 차단</h3>
+        <div class="admin-logs" id="adminLogs"></div>
+      </div>
+
+      <div class="admin-section">
+        <h3>차단된 IP 목록</h3>
+        <div id="bannedList" style="font-size:0.8rem; display:flex; flex-direction:column; gap:4px;"></div>
       </div>
     </div>
   </div>
@@ -92,31 +110,107 @@
   <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
   <script>
     const socket = io();
-    const loginOverlay = document.getElementById('loginOverlay');
-    const loginId = document.getElementById('loginId');
-    const loginBtn = document.getElementById('loginBtn');
+    let isRegisterMode = false;
+
+    const authOverlay = document.getElementById('authOverlay');
+    const tabLogin = document.getElementById('tabLogin');
+    const tabRegister = document.getElementById('tabRegister');
+    const authId = document.getElementById('authId');
+    const authPw = document.getElementById('authPw');
+    const authBtn = document.getElementById('authBtn');
+
+    const chatScreen = document.getElementById('chatScreen');
+    const adminScreen = document.getElementById('adminScreen');
     const userBadge = document.getElementById('userBadge');
-    
     const chatBox = document.getElementById('chatBox');
     const statusEl = document.getElementById('status');
     const msgInput = document.getElementById('msgInput');
     const sendBtn = document.getElementById('sendBtn');
     
-    const adminPanel = document.getElementById('adminPanel');
     const adminLogs = document.getElementById('adminLogs');
     const bannedList = document.getElementById('bannedList');
 
-    // 가상 로그인 처리
-    loginBtn.addEventListener('click', () => {
-      const id = loginId.value.trim();
-      if (!id) return alert('아이디를 입력해 주세요!');
-      
-      userBadge.textContent = id;
-      loginOverlay.style.display = 'none';
-      
-      // 서버로 로그인 이벤트 전송
-      socket.emit('login', { userId: id });
+    // 탭 전환
+    tabLogin.addEventListener('click', () => {
+      isRegisterMode = false;
+      tabLogin.classList.add('active');
+      tabRegister.classList.remove('active');
+      authBtn.textContent = '로그인';
     });
+
+    tabRegister.addEventListener('click', () => {
+      isRegisterMode = true;
+      tabRegister.classList.add('active');
+      tabLogin.classList.remove('active');
+      authBtn.textContent = '회원가입';
+    });
+
+    // 버튼 클릭 시 이벤트 분기
+    authBtn.addEventListener('click', () => {
+      const userId = authId.value.trim();
+      const userPw = authPw.value.trim();
+
+      if (!userId || !userPw) return alert('아이디와 비밀번호를 모두 입력하세요.');
+
+      if (isRegisterMode) {
+        socket.emit('register', { userId, userPw });
+      } else {
+        socket.emit('login', { userId, userPw });
+      }
+    });
+
+    socket.on('auth_error', (msg) => alert(msg));
+
+    socket.on('register_success', (msg) => {
+      alert(msg);
+      tabLogin.click(); // 로그인 탭으로 자동 이동
+      authPw.value = '';
+    });
+
+    socket.on('login_success', (data) => {
+      userBadge.textContent = data.userId;
+      authOverlay.style.display = 'none';
+    });
+
+    socket.on('admin_login_success', (data) => {
+      authOverlay.style.display = 'none';
+      chatScreen.style.display = 'none';
+      adminScreen.style.display = 'flex';
+      renderBannedList(data.bannedIPs);
+    });
+
+    // 실시간 대화 모니터링
+    socket.on('admin_chat_log', (log) => {
+      const div = document.createElement('div');
+      div.className = 'log-item';
+      div.innerHTML = `
+        <div>
+          <strong>${log.fromId}</strong> (${log.fromIp}) ➔ <strong>${log.toId}</strong> (${log.toIp})<br>
+          <span style="color:#f1f5f9;">${log.msg}</span>
+        </div>
+        <button class="ban-btn" onclick="banIp('${log.fromIp}')">IP 차단</button>
+      `;
+      adminLogs.appendChild(div);
+      adminLogs.scrollTop = adminLogs.scrollHeight;
+    });
+
+    socket.on('admin_ban_updated', (list) => renderBannedList(list));
+
+    function renderBannedList(list) {
+      if (list.length === 0) {
+        bannedList.innerHTML = '<span style="color:#94a3b8;">차단된 IP가 없습니다.</span>';
+        return;
+      }
+      bannedList.innerHTML = list.map(ip => `
+        <div style="display:flex; justify-content:space-between; align-items:center; background:#334155; padding:6px; border-radius:4px;">
+          <span>${ip}</span>
+          <button class="unban-btn" onclick="unbanIp('${ip}')">차단 해제</button>
+        </div>
+      `).join('');
+    }
+
+    function banIp(ip) { socket.emit('admin_ban_ip', ip); }
+    function unbanIp(ip) { socket.emit('admin_unban_ip', ip); }
 
     function appendSystemMsg(text) {
       const div = document.createElement('div');
@@ -152,48 +246,17 @@
     socket.on('matched', () => {
       statusEl.textContent = '상대방과 연결됨!';
       setChatActive(true);
-      appendSystemMsg('익명 상대와 대화가 시작되었습니다.');
+      appendSystemMsg('익명 대화가 시작되었습니다.');
     });
 
     socket.on('message', (msg) => appendMsg(msg, 'partner'));
-
-    socket.on('banned', () => {
-      alert('관리자에 의해 접속이 차단되었습니다.');
-      location.reload();
-    });
-
-    // 관리자 모드 승인
-    socket.on('admin_approved', (data) => {
-      adminPanel.style.display = 'block';
-      renderBannedList(data.bannedIPs);
-      appendSystemMsg('[SYSTEM] 개발자 모드가 활성화되었습니다.');
-    });
-
-    socket.on('admin_chat_log', (log) => {
-      const div = document.createElement('div');
-      div.className = 'admin-log';
-      div.innerHTML = `[대화] ${log.fromId}(${log.fromIp}) ➔ ${log.toId}(${log.toIp}): ${log.msg} 
-        <button class="ban-btn" onclick="banIp('${log.fromIp}')">보낸이 IP 차단</button>`;
-      adminLogs.appendChild(div);
-      adminLogs.scrollTop = adminLogs.scrollHeight;
-    });
-
-    socket.on('admin_ban_updated', (list) => renderBannedList(list));
-
-    function renderBannedList(list) {
-      bannedList.innerHTML = list.map(ip => 
-        `<div>${ip} <button class="unban-btn" onclick="unbanIp('${ip}')">해제</button></div>`
-      ).join('');
-    }
-
-    function banIp(ip) { socket.emit('admin_ban_ip', ip); }
-    function unbanIp(ip) { socket.emit('admin_unban_ip', ip); }
+    socket.on('banned', () => { alert('관리자에 의해 차단되었습니다.'); location.reload(); });
 
     function send() {
       const text = msgInput.value.trim();
       if (text) {
         socket.emit('message', text);
-        if (text !== '0009') appendMsg(text, 'my');
+        appendMsg(text, 'my');
         msgInput.value = '';
       }
     }
