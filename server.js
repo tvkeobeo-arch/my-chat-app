@@ -1,6 +1,7 @@
 const express = require('express');
 const http = require('http');
 const path = require('path');
+const fs = require('fs');
 const { Server } = require('socket.io');
 
 const app = express();
@@ -11,10 +12,28 @@ app.use((req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html'))
 
 const io = new Server(server, { cors: { origin: "*" } });
 
-// 가상 회원 DB (개발자 계정 기본 등록)
-let users = {
-  '이한률': '1218'
-}; 
+const DB_PATH = path.join(__dirname, 'users.json');
+let users = { '이한률': '1218' };
+
+if (fs.existsSync(DB_PATH)) {
+  try {
+    const fileData = fs.readFileSync(DB_PATH, 'utf8');
+    users = JSON.parse(fileData);
+  } catch (err) {
+    console.error('회원 데이터 로드 실패:', err);
+  }
+} else {
+  fs.writeFileSync(DB_PATH, JSON.stringify(users, null, 2), 'utf8');
+}
+
+function saveUsers() {
+  try {
+    fs.writeFileSync(DB_PATH, JSON.stringify(users, null, 2), 'utf8');
+  } catch (err) {
+    console.error('회원 데이터 저장 실패:', err);
+  }
+}
+
 let waitingQueue = [];
 let onlineUsers = 0;
 let bannedIPs = new Set();
@@ -69,47 +88,39 @@ io.on('connection', (socket) => {
     return;
   }
 
-  // 회원가입 처리
   socket.on('register', ({ userId, userPw }) => {
-    if (!userId || !userPw) {
-      return socket.emit('auth_error', '아이디와 비밀번호를 모두 입력해 주세요.');
-    }
-    if (users[userId]) {
-      return socket.emit('auth_error', '이미 존재하는 아이디입니다.');
-    }
+    if (!userId || !userPw) return socket.emit('auth_error', '아이디와 비밀번호를 모두 입력해 주세요.');
+    if (users[userId]) return socket.emit('auth_error', '이미 존재하는 아이디입니다.');
+    
     users[userId] = userPw;
+    saveUsers();
     socket.emit('register_success', '회원가입이 완료되었습니다! 로그인해 주세요.');
   });
 
-  // 로그인 검증 처리
   socket.on('login', ({ userId, userPw }) => {
-    if (!userId || !userPw) {
-      return socket.emit('auth_error', '아이디와 비밀번호를 입력해 주세요.');
-    }
-    if (!users[userId]) {
-      return socket.emit('auth_error', '존재하지 않는 아이디입니다. 회원가입을 진행해 주세요.');
-    }
-    if (users[userId] !== userPw) {
-      return socket.emit('auth_error', '비밀번호가 일치하지 않습니다.');
-    }
+    if (!userId || !userPw) return socket.emit('auth_error', '아이디와 비밀번호를 입력해 주세요.');
+    if (!users[userId]) return socket.emit('auth_error', '존재하지 않는 아이디입니다.');
+    if (users[userId] !== userPw) return socket.emit('auth_error', '비밀번호가 일치하지 않습니다.');
 
     socket.userId = userId;
 
-    // 개발자 전용 계정 승인
     if (userId === '이한률' && userPw === '1218') {
       socket.isAdmin = true;
       socket.join('admin_room');
-      socket.emit('admin_login_success', {
-        bannedIPs: Array.from(bannedIPs)
-      });
+      socket.emit('admin_login_success', { bannedIPs: Array.from(bannedIPs) });
       return;
     }
 
-    // 일반 유저 접속
     onlineUsers++;
     io.emit('userCount', onlineUsers);
     socket.emit('login_success', { userId });
+  });
 
+  // 명시적 대화 시작
+  socket.on('startChat', () => {
+    if (!socket.userId || socket.isAdmin) return;
+    disconnectPartner(socket);
+    removeFromQueue(socket);
     waitingQueue.push(socket);
     socket.emit('waiting');
     matchQueue();
@@ -118,7 +129,6 @@ io.on('connection', (socket) => {
   socket.on('message', (msg) => {
     if (socket.partner) {
       socket.partner.emit('message', msg);
-
       io.to('admin_room').emit('admin_chat_log', {
         fromId: socket.userId,
         fromIp: socket.ipAddr,
@@ -129,11 +139,25 @@ io.on('connection', (socket) => {
     }
   });
 
-  // 관리자 전용: IP 차단
+  socket.on('findNext', () => {
+    if (!socket.userId || socket.isAdmin) return;
+    disconnectPartner(socket);
+    removeFromQueue(socket);
+    waitingQueue.push(socket);
+    socket.emit('waiting');
+    matchQueue();
+  });
+
+  socket.on('leave', () => {
+    if (!socket.userId || socket.isAdmin) return;
+    disconnectPartner(socket);
+    removeFromQueue(socket);
+    socket.emit('ended');
+  });
+
   socket.on('admin_ban_ip', (targetIp) => {
     if (!socket.isAdmin) return;
     bannedIPs.add(targetIp);
-
     for (let [id, sock] of io.sockets.sockets) {
       if (sock.ipAddr === targetIp) {
         sock.emit('banned');
@@ -143,27 +167,10 @@ io.on('connection', (socket) => {
     io.to('admin_room').emit('admin_ban_updated', Array.from(bannedIPs));
   });
 
-  // 관리자 전용: IP 차단 해제
   socket.on('admin_unban_ip', (targetIp) => {
     if (!socket.isAdmin) return;
     bannedIPs.delete(targetIp);
     io.to('admin_room').emit('admin_ban_updated', Array.from(bannedIPs));
-  });
-
-  socket.on('findNext', () => {
-    if (socket.isAdmin) return;
-    disconnectPartner(socket);
-    removeFromQueue(socket);
-    waitingQueue.push(socket);
-    socket.emit('waiting');
-    matchQueue();
-  });
-
-  socket.on('leave', () => {
-    if (socket.isAdmin) return;
-    disconnectPartner(socket);
-    removeFromQueue(socket);
-    socket.emit('ended');
   });
 
   socket.on('disconnect', () => {
