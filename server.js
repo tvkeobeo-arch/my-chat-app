@@ -60,7 +60,6 @@ io.on('connection', (socket) => {
   onlineUsers++;
   io.emit('userCount', onlineUsers);
 
-  // 접속 즉시 매칭 대기열 추가
   waitingQueue.push(socket);
   socket.emit('waiting');
   matchQueue();
@@ -71,7 +70,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // 다음 상대 찾기 (대화 끊고 다시 대기열 진입)
   socket.on('findNext', () => {
     disconnectPartner(socket);
     removeFromQueue(socket);
@@ -80,7 +78,6 @@ io.on('connection', (socket) => {
     matchQueue();
   });
 
-  // 채팅 종료
   socket.on('leave', () => {
     disconnectPartner(socket);
     removeFromQueue(socket);
