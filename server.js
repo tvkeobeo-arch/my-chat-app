@@ -38,13 +38,12 @@ let waitingQueue = [];
 let onlineUsers = 0;
 let bannedIPs = new Set();
 let roomCounter = 1;
-let activeRooms = new Map(); // roomId -> { id, u1, u2, logs, hasWarning }
+let activeRooms = new Map();
 
-// 감지할 금지어 단어장 (필요시 추가)
-const BAD_WORDS = ['시발', '씨발', '병신', '개새끼', '존나', '지랄', '섹스', '성교', '야동', '자지', '보지', '조건', '조건만남', '섹', '자위'];
+const BAD_PATTERN = /(씨발|시발|병신|개새끼|지랄|존나|성교|야동|조건만남)/i;
 
 function checkBadWords(text) {
-  return BAD_WORDS.some(word => text.includes(word));
+  return BAD_PATTERN.test(text);
 }
 
 function getClientIp(socket) {
@@ -67,6 +66,9 @@ function matchQueue() {
     user1.currentRoomId = roomId;
     user2.currentRoomId = roomId;
 
+    user1.join(roomId);
+    user2.join(roomId);
+
     const roomData = {
       id: roomId,
       u1: { id: user1.userId, ip: user1.ipAddr },
@@ -80,7 +82,6 @@ function matchQueue() {
     user1.emit('matched');
     user2.emit('matched');
 
-    // 관리자에게 방 생성 알림
     io.to('admin_room').emit('admin_room_created', roomData);
   }
 }
@@ -98,6 +99,11 @@ function disconnectPartner(socket) {
     if (roomId && activeRooms.has(roomId)) {
       activeRooms.delete(roomId);
       io.to('admin_room').emit('admin_room_destroyed', roomId);
+    }
+
+    if (roomId) {
+      socket.leave(roomId);
+      partner.leave(roomId);
     }
 
     socket.partner = null;
@@ -139,7 +145,8 @@ io.on('connection', (socket) => {
       socket.join('admin_room');
       socket.emit('admin_login_success', {
         bannedIPs: Array.from(bannedIPs),
-        rooms: Array.from(activeRooms.values())
+        rooms: Array.from(activeRooms.values()),
+        onlineUsers: onlineUsers
       });
       return;
     }
@@ -183,6 +190,35 @@ io.on('connection', (socket) => {
           hasWarning: room.hasWarning
         });
       }
+    }
+  });
+
+  // 관리자 전용 채팅 개입 이벤트
+  socket.on('admin_send_message', ({ roomId, msg }) => {
+    if (!socket.isAdmin || !roomId || !msg) return;
+
+    const room = activeRooms.get(roomId);
+    if (room) {
+      const timeStr = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      
+      // 방에 속한 유저들에게 관리자 메시지 전송
+      io.to(roomId).emit('admin_broadcast', msg);
+
+      // 관제 로그 기록 및 관제 화면 업데이트
+      const logEntry = {
+        fromId: '관리자',
+        fromIp: 'ADMIN',
+        msg: `[개입] ${msg}`,
+        isBad: false,
+        time: timeStr
+      };
+      room.logs.push(logEntry);
+
+      io.to('admin_room').emit('admin_chat_update', {
+        roomId: roomId,
+        log: logEntry,
+        hasWarning: room.hasWarning
+      });
     }
   });
 

@@ -34,6 +34,10 @@
     .msg-group.my .msg-bubble { background: #2563eb; color: #fff; }
     .msg-group.partner .msg-bubble { background: #fff; color: #0f172a; border: 1px solid #e2e8f0; }
     .msg-system { align-self: center; background: #e2e8f0; color: #475569; font-size: 0.75rem; padding: 6px 12px; border-radius: 12px; margin: 4px 0; font-weight: bold; }
+    
+    /* 중앙 관리자 개입 메시지 스타일 */
+    .msg-admin { align-self: center; background: #ef4444; color: #ffffff; font-size: 0.85rem; padding: 8px 14px; border-radius: 16px; margin: 6px 0; font-weight: bold; text-align: center; box-shadow: 0 2px 6px rgba(239,68,68,0.3); word-break: break-word; max-width: 90%; }
+
     .bottom-panel { background: #fff; padding: 10px; border-top: 1px solid #e2e8f0; display: flex; flex-direction: column; gap: 8px; }
     .input-row { display: flex; gap: 6px; }
     input[type="text"] { flex: 1; height: 40px; padding: 0 10px; border: 1px solid #cbd5e1; border-radius: 20px; font-size: 16px; }
@@ -45,7 +49,7 @@
     .btn-next { flex: 1; background: #10b981; color: white; }
     .btn-leave { flex: 1; background: #ef4444; color: white; }
 
-    /* 관리자 모니터링 대시보드 */
+    /* 관리자 대시보드 */
     .admin-screen { display: none; flex-direction: column; height: 100%; width: 100%; background: #0f172a; color: #f8fafc; padding: 16px; gap: 12px; }
     .admin-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #ef4444; padding-bottom: 8px; }
     .admin-header h2 { color: #ef4444; font-size: 1.2rem; }
@@ -75,6 +79,11 @@
     .admin-log-header { display: flex; justify-content: space-between; color: #94a3b8; font-size: 0.75rem; }
     .ban-btn { background: #ef4444; color: white; border: none; padding: 2px 6px; border-radius: 4px; cursor: pointer; font-size: 0.7rem; }
     .unban-btn { background: #10b981; color: white; border: none; padding: 2px 6px; border-radius: 4px; cursor: pointer; font-size: 0.7rem; }
+
+    /* 관리자 개입 입력 바 */
+    .admin-input-row { display: flex; gap: 8px; margin-top: 8px; }
+    .admin-input-row input { flex: 1; height: 36px; padding: 0 10px; background: #0f172a; border: 1px solid #475569; border-radius: 6px; color: #fff; font-size: 0.85rem; }
+    .admin-input-row button { height: 36px; background: #ef4444; color: white; border: none; border-radius: 6px; font-weight: bold; padding: 0 16px; cursor: pointer; }
   </style>
 </head>
 <body>
@@ -133,6 +142,12 @@
           <div id="selectedRoomTitle" style="font-weight:bold; font-size:1rem; color:#38bdf8;">방을 선택하세요</div>
           <div id="selectedRoomUsers" style="font-size:0.8rem; color:#94a3b8; margin-top:2px;"></div>
           <div class="admin-chat-box" id="adminChatBox"></div>
+          
+          <!-- 관리자 대화 개입 입력 창 -->
+          <div class="admin-input-row">
+            <input type="text" id="adminMsgInput" placeholder="선택한 방으로 보내실 메시지를 입력하세요..." disabled autocomplete="off">
+            <button id="adminSendBtn" disabled>전송</button>
+          </div>
         </div>
       </div>
 
@@ -177,6 +192,9 @@
     const selectedRoomUsers = document.getElementById('selectedRoomUsers');
     const adminChatBox = document.getElementById('adminChatBox');
     const bannedList = document.getElementById('bannedList');
+    
+    const adminMsgInput = document.getElementById('adminMsgInput');
+    const adminSendBtn = document.getElementById('adminSendBtn');
 
     tabLogin.addEventListener('click', () => {
       isRegisterMode = false;
@@ -219,7 +237,6 @@
       updateAdminStats();
     });
 
-    // 관리자 로그인 완료
     socket.on('admin_login_success', (data) => {
       authOverlay.style.display = 'none';
       chatScreen.style.display = 'none';
@@ -243,6 +260,8 @@
 
       if (keys.length === 0) {
         roomContainer.innerHTML = '<div style="color:#64748b; font-size:0.8rem; text-align:center; padding:20px;">진행 중인 방이 없습니다.</div>';
+        adminMsgInput.disabled = true;
+        adminSendBtn.disabled = true;
         updateAdminStats();
         return;
       }
@@ -270,6 +289,8 @@
 
     function selectRoom(id) {
       selectedRoomId = id;
+      adminMsgInput.disabled = false;
+      adminSendBtn.disabled = false;
       renderRoomList();
       renderAdminChat();
     }
@@ -279,6 +300,8 @@
         selectedRoomTitle.textContent = '방을 선택하세요';
         selectedRoomUsers.textContent = '';
         adminChatBox.innerHTML = '';
+        adminMsgInput.disabled = true;
+        adminSendBtn.disabled = true;
         return;
       }
 
@@ -306,6 +329,17 @@
       });
       adminChatBox.scrollTop = adminChatBox.scrollHeight;
     }
+
+    function sendAdminMessage() {
+      const text = adminMsgInput.value.trim();
+      if (text && selectedRoomId) {
+        socket.emit('admin_send_message', { roomId: selectedRoomId, msg: text });
+        adminMsgInput.value = '';
+      }
+    }
+
+    adminSendBtn.addEventListener('click', sendAdminMessage);
+    adminMsgInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendAdminMessage(); });
 
     socket.on('admin_room_created', (room) => {
       roomsData[room.id] = room;
@@ -391,6 +425,15 @@
       chatBox.scrollTop = chatBox.scrollHeight;
     }
 
+    // 관리자 개입 메시지 출력 함수
+    function appendAdminMsg(text) {
+      const div = document.createElement('div');
+      div.className = 'msg-admin';
+      div.textContent = `[관리자]: ${text}`;
+      chatBox.appendChild(div);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
     function appendMsg(text, type) {
       const group = document.createElement('div');
       group.className = `msg-group ${type}`;
@@ -403,6 +446,7 @@
     }
 
     socket.on('message', (msg) => appendMsg(msg, 'partner'));
+    socket.on('admin_broadcast', (msg) => appendAdminMsg(msg));
     socket.on('banned', () => { alert('관리자에 의해 차단되었습니다.'); location.reload(); });
 
     function send() {
