@@ -1,235 +1,421 @@
-const express = require('express');
-const http = require('http');
-const path = require('path');
-const fs = require('fs');
-const { Server } = require('socket.io');
-
-const app = express();
-const server = http.createServer(app);
-
-app.use(express.static(path.join(__dirname, 'public')));
-app.use((req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
-
-const io = new Server(server, { cors: { origin: "*" } });
-
-const DB_PATH = path.join(__dirname, 'users.json');
-let users = { '이한률': '1218' };
-
-if (fs.existsSync(DB_PATH)) {
-  try {
-    const fileData = fs.readFileSync(DB_PATH, 'utf8');
-    users = JSON.parse(fileData);
-  } catch (err) {
-    console.error('회원 데이터 로드 실패:', err);
-  }
-} else {
-  fs.writeFileSync(DB_PATH, JSON.stringify(users, null, 2), 'utf8');
-}
-
-function saveUsers() {
-  try {
-    fs.writeFileSync(DB_PATH, JSON.stringify(users, null, 2), 'utf8');
-  } catch (err) {
-    console.error('회원 데이터 저장 실패:', err);
-  }
-}
-
-let waitingQueue = [];
-let onlineUsers = 0;
-let bannedIPs = new Set();
-let roomCounter = 1;
-let activeRooms = new Map();
-
-const BAD_WORDS = ['시발', '씨발', '병신', '개새끼', '존나', '지랄', '섹스', '성교', '야동', '자지', '보지', '조건', '조건만남', '섹', '자위'];
-
-function checkBadWords(text) {
-  return BAD_WORDS.some(word => text.includes(word));
-}
-
-function getClientIp(socket) {
-  const rawIp = socket.handshake.headers['x-forwarded-for'] || socket.handshake.address;
-  return rawIp ? rawIp.split(',')[0].trim() : '0.0.0.0';
-}
-
-function matchQueue() {
-  while (waitingQueue.length >= 2) {
-    const user1 = waitingQueue.shift();
-    const user2 = waitingQueue.shift();
-
-    if (!user1.connected) { if (user2.connected) waitingQueue.unshift(user2); continue; }
-    if (!user2.connected) { waitingQueue.unshift(user1); continue; }
-
-    const roomId = `방 #${roomCounter++}`;
-
-    user1.partner = user2;
-    user2.partner = user1;
-    user1.currentRoomId = roomId;
-    user2.currentRoomId = roomId;
-
-    const roomData = {
-      id: roomId,
-      u1: { id: user1.userId, ip: user1.ipAddr },
-      u2: { id: user2.userId, ip: user2.ipAddr },
-      logs: [],
-      hasWarning: false
-    };
-
-    activeRooms.set(roomId, roomData);
-
-    user1.emit('matched');
-    user2.emit('matched');
-
-    io.to('admin_room').emit('admin_room_created', roomData);
-  }
-}
-
-function removeFromQueue(socket) {
-  const index = waitingQueue.indexOf(socket);
-  if (index > -1) waitingQueue.splice(index, 1);
-}
-
-function disconnectPartner(socket) {
-  if (socket.partner) {
-    const partner = socket.partner;
-    const roomId = socket.currentRoomId;
-
-    if (roomId && activeRooms.has(roomId)) {
-      activeRooms.delete(roomId);
-      io.to('admin_room').emit('admin_room_destroyed', roomId);
-    }
-
-    socket.partner = null;
-    socket.currentRoomId = null;
-    partner.partner = null;
-    partner.currentRoomId = null;
-    partner.emit('partnerDisconnected');
-  }
-}
-
-io.on('connection', (socket) => {
-  const ip = getClientIp(socket);
-  socket.ipAddr = ip;
-
-  if (bannedIPs.has(ip)) {
-    socket.emit('banned');
-    socket.disconnect();
-    return;
-  }
-
-  socket.on('register', ({ userId, userPw }) => {
-    if (!userId || !userPw) return socket.emit('auth_error', '아이디와 비밀번호를 입력해 주세요.');
-    if (users[userId]) return socket.emit('auth_error', '이미 존재하는 아이디입니다.');
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>수공라이브</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, sans-serif; background: #0f172a; display: flex; justify-content: center; height: 100dvh; }
+    .app-container { width: 100%; max-width: 900px; height: 100dvh; background: #1e293b; display: flex; flex-direction: column; position: relative; }
     
-    users[userId] = userPw;
-    saveUsers();
-    socket.emit('register_success', '회원가입 완료! 로그인하세요.');
-  });
+    /* 인증 모달 */
+    .auth-overlay { position: absolute; inset: 0; background: #0f172a; z-index: 100; display: flex; justify-content: center; align-items: center; padding: 20px; }
+    .auth-card { background: #fff; width: 100%; max-width: 320px; padding: 24px; border-radius: 16px; display: flex; flex-direction: column; gap: 12px; text-align: center; }
+    .auth-tabs { display: flex; border-bottom: 2px solid #e2e8f0; margin-bottom: 8px; }
+    .auth-tab { flex: 1; padding: 8px; font-weight: bold; color: #64748b; cursor: pointer; }
+    .auth-tab.active { color: #2563eb; border-bottom: 2px solid #2563eb; margin-bottom: -2px; }
+    .auth-card input { width: 100%; height: 42px; padding: 0 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; }
+    .auth-card button { height: 42px; background: #2563eb; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
 
-  socket.on('login', ({ userId, userPw }) => {
-    if (!userId || !userPw) return socket.emit('auth_error', '아이디와 비밀번호를 입력해 주세요.');
-    if (!users[userId]) return socket.emit('auth_error', '존재하지 않는 아이디입니다.');
-    if (users[userId] !== userPw) return socket.emit('auth_error', '비밀번호가 불일치합니다.');
+    /* 일반 채팅 UI */
+    .chat-screen { display: flex; flex-direction: column; height: 100%; width: 100%; max-width: 480px; margin: 0 auto; background: #f4f6f8; }
+    .header { background: #1e293b; color: #fff; padding: 12px; display: flex; justify-content: space-between; align-items: center; }
+    .brand { display: flex; align-items: center; gap: 8px; }
+    .brand h1 { font-size: 1.1rem; }
+    .user-count { font-size: 0.75rem; background: #10b981; color: white; padding: 2px 6px; border-radius: 10px; font-weight: bold; }
+    .user-badge { font-size: 0.8rem; color: #38bdf8; background: #334155; padding: 4px 8px; border-radius: 6px; }
+    .status-bar { background: #fff; color: #64748b; font-size: 0.85rem; font-weight: bold; text-align: center; padding: 8px; border-bottom: 1px solid #e2e8f0; }
+    .chat-box { flex: 1; padding: 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+    .msg-group { display: flex; flex-direction: column; max-width: 80%; }
+    .msg-group.my { align-self: flex-end; }
+    .msg-group.partner { align-self: flex-start; }
+    .msg-bubble { padding: 8px 12px; border-radius: 12px; font-size: 0.9rem; word-break: break-word; }
+    .msg-group.my .msg-bubble { background: #2563eb; color: #fff; }
+    .msg-group.partner .msg-bubble { background: #fff; color: #0f172a; border: 1px solid #e2e8f0; }
+    .msg-system { align-self: center; background: #e2e8f0; color: #475569; font-size: 0.75rem; padding: 6px 12px; border-radius: 12px; margin: 4px 0; font-weight: bold; }
+    .bottom-panel { background: #fff; padding: 10px; border-top: 1px solid #e2e8f0; display: flex; flex-direction: column; gap: 8px; }
+    .input-row { display: flex; gap: 6px; }
+    input[type="text"] { flex: 1; height: 40px; padding: 0 10px; border: 1px solid #cbd5e1; border-radius: 20px; font-size: 16px; }
+    button { height: 40px; border: none; border-radius: 20px; font-weight: bold; cursor: pointer; padding: 0 14px; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-start { background: #2563eb; color: white; flex: 1; }
+    .btn-send { background: #3b82f6; color: white; }
+    .action-row { display: flex; gap: 6px; }
+    .btn-next { flex: 1; background: #10b981; color: white; }
+    .btn-leave { flex: 1; background: #ef4444; color: white; }
 
-    socket.userId = userId;
+    /* 관리자 모니터링 대시보드 */
+    .admin-screen { display: none; flex-direction: column; height: 100%; width: 100%; background: #0f172a; color: #f8fafc; padding: 16px; gap: 12px; }
+    .admin-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #ef4444; padding-bottom: 8px; }
+    .admin-header h2 { color: #ef4444; font-size: 1.2rem; }
+    .admin-stats { font-size: 0.85rem; color: #38bdf8; background: #1e293b; padding: 4px 10px; border-radius: 6px; font-weight: bold; }
+    
+    .admin-body { display: flex; flex: 1; gap: 12px; overflow: hidden; }
+    .room-list-panel { width: 320px; background: #1e293b; border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
+    .chat-view-panel { flex: 1; background: #1e293b; border-radius: 10px; padding: 12px; display: flex; flex-direction: column; }
+    
+    .room-card { background: #334155; padding: 12px; border-radius: 8px; cursor: pointer; border: 2px solid transparent; transition: all 0.2s; display: flex; justify-content: space-between; align-items: center; }
+    .room-card.active { border-color: #38bdf8; background: #475569; }
+    .room-card.warning { border-color: #ef4444 !important; background: #451a1a !important; animation: pulse 1.5s infinite; }
+    
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+      70% { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+    }
 
-    if (userId === '이한률' && userPw === '1218') {
-      socket.isAdmin = true;
-      socket.join('admin_room');
-      socket.emit('admin_login_success', {
-        bannedIPs: Array.from(bannedIPs),
-        rooms: Array.from(activeRooms.values()),
-        onlineUsers: onlineUsers
+    .room-info { font-size: 0.85rem; display: flex; flex-direction: column; gap: 2px; }
+    .room-title { font-weight: bold; font-size: 1rem; color: #f8fafc; display: flex; align-items: center; gap: 6px; }
+    .warn-badge { color: #ef4444; font-size: 1.1rem; }
+    
+    .admin-chat-box { flex: 1; background: #0f172a; border-radius: 8px; padding: 10px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+    .admin-log-item { background: #1e293b; padding: 8px; border-radius: 6px; font-size: 0.8rem; display: flex; flex-direction: column; gap: 4px; }
+    .admin-log-item.bad { border-left: 4px solid #ef4444; background: #2d1515; }
+    .admin-log-header { display: flex; justify-content: space-between; color: #94a3b8; font-size: 0.75rem; }
+    .ban-btn { background: #ef4444; color: white; border: none; padding: 2px 6px; border-radius: 4px; cursor: pointer; font-size: 0.7rem; }
+    .unban-btn { background: #10b981; color: white; border: none; padding: 2px 6px; border-radius: 4px; cursor: pointer; font-size: 0.7rem; }
+  </style>
+</head>
+<body>
+
+  <div class="app-container">
+    <div class="auth-overlay" id="authOverlay">
+      <div class="auth-card">
+        <div class="auth-tabs">
+          <div class="auth-tab active" id="tabLogin">로그인</div>
+          <div class="auth-tab" id="tabRegister">회원가입</div>
+        </div>
+        <input type="text" id="authId" placeholder="아이디" />
+        <input type="password" id="authPw" placeholder="비밀번호" />
+        <button id="authBtn">로그인</button>
+      </div>
+    </div>
+
+    <!-- 일반 채팅 화면 -->
+    <div class="chat-screen" id="chatScreen">
+      <div class="header">
+        <div class="brand">
+          <h1>수공라이브</h1>
+          <span class="user-count" id="userCount">0명</span>
+        </div>
+        <div class="user-badge" id="userBadge">비로그인</div>
+      </div>
+      <div class="status-bar" id="status">[대화 시작] 버튼을 눌러 연결하세요.</div>
+      <div class="chat-box" id="chatBox"></div>
+      <div class="bottom-panel">
+        <div class="input-row">
+          <input type="text" id="msgInput" placeholder="메시지 입력..." disabled autocomplete="off">
+          <button class="btn-send" id="sendBtn" disabled>전송</button>
+        </div>
+        <div class="action-row">
+          <button class="btn-start" id="startBtn">대화 시작</button>
+          <button class="btn-next" id="nextBtn" disabled>다음 상대</button>
+          <button class="btn-leave" id="leaveBtn" disabled>대화 종료</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 관리자 통제 대시보드 -->
+    <div class="admin-screen" id="adminScreen">
+      <div class="admin-header">
+        <h2>🛡️ 수공라이브 관제센터</h2>
+        <div class="admin-stats" id="adminStats">접속자: 0명 | 활성 방: 0개</div>
+      </div>
+      
+      <div class="admin-body">
+        <div class="room-list-panel" id="roomListPanel">
+          <div style="font-size: 0.85rem; color:#94a3b8; font-weight:bold; margin-bottom:4px;">실시간 진행 방 목록</div>
+          <div id="roomContainer" style="display:flex; flex-direction:column; gap:8px;"></div>
+        </div>
+
+        <div class="chat-view-panel">
+          <div id="selectedRoomTitle" style="font-weight:bold; font-size:1rem; color:#38bdf8;">방을 선택하세요</div>
+          <div id="selectedRoomUsers" style="font-size:0.8rem; color:#94a3b8; margin-top:2px;"></div>
+          <div class="admin-chat-box" id="adminChatBox"></div>
+        </div>
+      </div>
+
+      <div style="background:#1e293b; padding:8px 12px; border-radius:8px; font-size:0.8rem;">
+        <span style="color:#ef4444; font-weight:bold;">차단된 IP 목록:</span>
+        <span id="bannedList" style="margin-left:8px; color:#cbd5e1;">없음</span>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+  <script>
+    const socket = io();
+    let isRegisterMode = false;
+    let roomsData = {};
+    let selectedRoomId = null;
+    let currentOnlineCount = 0;
+
+    const authOverlay = document.getElementById('authOverlay');
+    const tabLogin = document.getElementById('tabLogin');
+    const tabRegister = document.getElementById('tabRegister');
+    const authId = document.getElementById('authId');
+    const authPw = document.getElementById('authPw');
+    const authBtn = document.getElementById('authBtn');
+
+    const chatScreen = document.getElementById('chatScreen');
+    const adminScreen = document.getElementById('adminScreen');
+    const userBadge = document.getElementById('userBadge');
+    const userCountEl = document.getElementById('userCount');
+    const chatBox = document.getElementById('chatBox');
+    const statusEl = document.getElementById('status');
+    const msgInput = document.getElementById('msgInput');
+    const sendBtn = document.getElementById('sendBtn');
+    
+    const startBtn = document.getElementById('startBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    const leaveBtn = document.getElementById('leaveBtn');
+
+    const adminStats = document.getElementById('adminStats');
+    const roomContainer = document.getElementById('roomContainer');
+    const selectedRoomTitle = document.getElementById('selectedRoomTitle');
+    const selectedRoomUsers = document.getElementById('selectedRoomUsers');
+    const adminChatBox = document.getElementById('adminChatBox');
+    const bannedList = document.getElementById('bannedList');
+
+    tabLogin.addEventListener('click', () => {
+      isRegisterMode = false;
+      tabLogin.classList.add('active');
+      tabRegister.classList.remove('active');
+      authBtn.textContent = '로그인';
+    });
+
+    tabRegister.addEventListener('click', () => {
+      isRegisterMode = true;
+      tabRegister.classList.add('active');
+      tabLogin.classList.remove('active');
+      authBtn.textContent = '회원가입';
+    });
+
+    authBtn.addEventListener('click', () => {
+      const userId = authId.value.trim();
+      const userPw = authPw.value.trim();
+      if (!userId || !userPw) return alert('아이디와 비밀번호를 모두 입력하세요.');
+
+      if (isRegisterMode) {
+        socket.emit('register', { userId, userPw });
+      } else {
+        socket.emit('login', { userId, userPw });
+      }
+    });
+
+    socket.on('auth_error', (msg) => alert(msg));
+    socket.on('register_success', (msg) => { alert(msg); tabLogin.click(); authPw.value = ''; });
+
+    socket.on('login_success', (data) => {
+      userBadge.textContent = data.userId;
+      authOverlay.style.display = 'none';
+      setIdleUI();
+    });
+
+    socket.on('userCount', (count) => {
+      currentOnlineCount = count;
+      userCountEl.textContent = `${count}명`;
+      updateAdminStats();
+    });
+
+    // 관리자 로그인 완료
+    socket.on('admin_login_success', (data) => {
+      authOverlay.style.display = 'none';
+      chatScreen.style.display = 'none';
+      adminScreen.style.display = 'flex';
+      
+      currentOnlineCount = data.onlineUsers || 0;
+      data.rooms.forEach(r => { roomsData[r.id] = r; });
+      renderRoomList();
+      renderBannedList(data.bannedIPs);
+      updateAdminStats();
+    });
+
+    function updateAdminStats() {
+      const activeRoomCount = Object.keys(roomsData).length;
+      adminStats.textContent = `접속자: ${currentOnlineCount}명 | 활성 방: ${activeRoomCount}개`;
+    }
+
+    function renderRoomList() {
+      roomContainer.innerHTML = '';
+      const keys = Object.keys(roomsData);
+
+      if (keys.length === 0) {
+        roomContainer.innerHTML = '<div style="color:#64748b; font-size:0.8rem; text-align:center; padding:20px;">진행 중인 방이 없습니다.</div>';
+        updateAdminStats();
+        return;
+      }
+
+      keys.forEach(id => {
+        const room = roomsData[id];
+        const card = document.createElement('div');
+        card.className = `room-card ${room.hasWarning ? 'warning' : ''} ${selectedRoomId === id ? 'active' : ''}`;
+        card.onclick = () => selectRoom(id);
+
+        card.innerHTML = `
+          <div class="room-info">
+            <div class="room-title">
+              ${room.hasWarning ? '<span class="warn-badge">🚨</span>' : ''}
+              ${room.id}
+            </div>
+            <div style="color:#94a3b8;">${room.u1.id} ↔ ${room.u2.id}</div>
+          </div>
+        `;
+        roomContainer.appendChild(card);
       });
-      return;
+
+      updateAdminStats();
     }
 
-    onlineUsers++;
-    io.emit('userCount', onlineUsers);
-    socket.emit('login_success', { userId });
-  });
+    function selectRoom(id) {
+      selectedRoomId = id;
+      renderRoomList();
+      renderAdminChat();
+    }
 
-  socket.on('startChat', () => {
-    if (!socket.userId || socket.isAdmin) return;
-    disconnectPartner(socket);
-    removeFromQueue(socket);
-    waitingQueue.push(socket);
-    socket.emit('waiting');
-    matchQueue();
-  });
+    function renderAdminChat() {
+      if (!selectedRoomId || !roomsData[selectedRoomId]) {
+        selectedRoomTitle.textContent = '방을 선택하세요';
+        selectedRoomUsers.textContent = '';
+        adminChatBox.innerHTML = '';
+        return;
+      }
 
-  socket.on('message', (msg) => {
-    if (socket.partner && socket.currentRoomId) {
-      socket.partner.emit('message', msg);
+      const room = roomsData[selectedRoomId];
+      selectedRoomTitle.textContent = `${room.id} 실시간 감시`;
+      selectedRoomUsers.innerHTML = `
+        유저 1: <strong>${room.u1.id}</strong> (${room.u1.ip}) 
+        <button class="ban-btn" onclick="banIp('${room.u1.ip}')">IP차단</button> | 
+        유저 2: <strong>${room.u2.id}</strong> (${room.u2.ip})
+        <button class="ban-btn" onclick="banIp('${room.u2.ip}')">IP차단</button>
+      `;
 
-      const isBad = checkBadWords(msg);
-      const roomId = socket.currentRoomId;
-      const room = activeRooms.get(roomId);
+      adminChatBox.innerHTML = '';
+      room.logs.forEach(log => {
+        const item = document.createElement('div');
+        item.className = `admin-log-item ${log.isBad ? 'bad' : ''}`;
+        item.innerHTML = `
+          <div class="admin-log-header">
+            <span><strong>${log.fromId}</strong> (${log.fromIp})</span>
+            <span>${log.time}</span>
+          </div>
+          <div style="color:#f8fafc; font-size:0.85rem;">${log.msg}</div>
+        `;
+        adminChatBox.appendChild(item);
+      });
+      adminChatBox.scrollTop = adminChatBox.scrollHeight;
+    }
 
-      if (room) {
-        const logEntry = {
-          fromId: socket.userId,
-          fromIp: socket.ipAddr,
-          msg: msg,
-          isBad: isBad,
-          time: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-        };
-        room.logs.push(logEntry);
-        if (isBad) room.hasWarning = true;
+    socket.on('admin_room_created', (room) => {
+      roomsData[room.id] = room;
+      renderRoomList();
+    });
 
-        io.to('admin_room').emit('admin_chat_update', {
-          roomId: roomId,
-          log: logEntry,
-          hasWarning: room.hasWarning
-        });
+    socket.on('admin_room_destroyed', (roomId) => {
+      delete roomsData[roomId];
+      if (selectedRoomId === roomId) selectedRoomId = null;
+      renderRoomList();
+      renderAdminChat();
+    });
+
+    socket.on('admin_chat_update', ({ roomId, log, hasWarning }) => {
+      if (roomsData[roomId]) {
+        roomsData[roomId].logs.push(log);
+        if (hasWarning) roomsData[roomId].hasWarning = true;
+        
+        renderRoomList();
+        if (selectedRoomId === roomId) {
+          renderAdminChat();
+        }
+      }
+    });
+
+    socket.on('admin_ban_updated', (list) => renderBannedList(list));
+
+    function renderBannedList(list) {
+      if (list.length === 0) {
+        bannedList.innerHTML = '없음';
+        return;
+      }
+      bannedList.innerHTML = list.map(ip => `
+        <span style="background:#334155; padding:2px 6px; border-radius:4px; margin-right:4px;">
+          ${ip} <button class="unban-btn" onclick="unbanIp('${ip}')">해제</button>
+        </span>
+      `).join('');
+    }
+
+    function banIp(ip) { socket.emit('admin_ban_ip', ip); }
+    function unbanIp(ip) { socket.emit('admin_unban_ip', ip); }
+
+    function setIdleUI() {
+      statusEl.textContent = '[대화 시작] 버튼을 누르면 상대방과 연결됩니다.';
+      msgInput.disabled = true; sendBtn.disabled = true;
+      startBtn.disabled = false; nextBtn.disabled = true; leaveBtn.disabled = true;
+    }
+
+    function setWaitingUI() {
+      statusEl.textContent = '상대방을 찾는 중입니다...';
+      msgInput.disabled = true; sendBtn.disabled = true;
+      startBtn.disabled = true; nextBtn.disabled = true; leaveBtn.disabled = false;
+    }
+
+    function setMatchedUI() {
+      statusEl.textContent = '상대방과 연결되었습니다!';
+      msgInput.disabled = false; sendBtn.disabled = false;
+      startBtn.disabled = true; nextBtn.disabled = false; leaveBtn.disabled = false;
+      msgInput.focus();
+    }
+
+    function setEndedUI(reason) {
+      statusEl.textContent = '대화가 종료되었습니다.';
+      msgInput.disabled = true; sendBtn.disabled = true;
+      startBtn.disabled = false; nextBtn.disabled = false; leaveBtn.disabled = true;
+      appendSystemMsg(reason);
+    }
+
+    startBtn.addEventListener('click', () => { chatBox.innerHTML = ''; socket.emit('startChat'); });
+    nextBtn.addEventListener('click', () => { chatBox.innerHTML = ''; socket.emit('findNext'); });
+    leaveBtn.addEventListener('click', () => { socket.emit('leave'); });
+
+    socket.on('waiting', () => { setWaitingUI(); appendSystemMsg('대기열에 등록되었습니다.'); });
+    socket.on('matched', () => { setMatchedUI(); appendSystemMsg('상대방과 연결되었습니다. 대화를 시작하세요!'); });
+    socket.on('partnerDisconnected', () => setEndedUI('상대방이 대화를 종료했습니다.'));
+    socket.on('ended', () => setEndedUI('대화를 종료했습니다.'));
+
+    function appendSystemMsg(text) {
+      const div = document.createElement('div');
+      div.className = 'msg-system';
+      div.textContent = text;
+      chatBox.appendChild(div);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    function appendMsg(text, type) {
+      const group = document.createElement('div');
+      group.className = `msg-group ${type}`;
+      const bubble = document.createElement('div');
+      bubble.className = 'msg-bubble';
+      bubble.textContent = text;
+      group.appendChild(bubble);
+      chatBox.appendChild(group);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    socket.on('message', (msg) => appendMsg(msg, 'partner'));
+    socket.on('banned', () => { alert('관리자에 의해 차단되었습니다.'); location.reload(); });
+
+    function send() {
+      const text = msgInput.value.trim();
+      if (text && !msgInput.disabled) {
+        socket.emit('message', text);
+        appendMsg(text, 'my');
+        msgInput.value = '';
       }
     }
-  });
 
-  socket.on('findNext', () => {
-    if (!socket.userId || socket.isAdmin) return;
-    disconnectPartner(socket);
-    removeFromQueue(socket);
-    waitingQueue.push(socket);
-    socket.emit('waiting');
-    matchQueue();
-  });
-
-  socket.on('leave', () => {
-    if (!socket.userId || socket.isAdmin) return;
-    disconnectPartner(socket);
-    removeFromQueue(socket);
-    socket.emit('ended');
-  });
-
-  socket.on('admin_ban_ip', (targetIp) => {
-    if (!socket.isAdmin) return;
-    bannedIPs.add(targetIp);
-    for (let [id, sock] of io.sockets.sockets) {
-      if (sock.ipAddr === targetIp) {
-        sock.emit('banned');
-        sock.disconnect();
-      }
-    }
-    io.to('admin_room').emit('admin_ban_updated', Array.from(bannedIPs));
-  });
-
-  socket.on('admin_unban_ip', (targetIp) => {
-    if (!socket.isAdmin) return;
-    bannedIPs.delete(targetIp);
-    io.to('admin_room').emit('admin_ban_updated', Array.from(bannedIPs));
-  });
-
-  socket.on('disconnect', () => {
-    if (socket.userId && !socket.isAdmin) {
-      onlineUsers = Math.max(0, onlineUsers - 1);
-      io.emit('userCount', onlineUsers);
-    }
-    removeFromQueue(socket);
-    disconnectPartner(socket);
-  });
-});
-
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`[Developer: HR] 수공라이브 가동 중 (PORT ${PORT})`);
-});
+    sendBtn.addEventListener('click', send);
+    msgInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') send(); });
+  </script>
+</body>
+</html>
