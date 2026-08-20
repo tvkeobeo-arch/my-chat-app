@@ -9,9 +9,11 @@ const io = new Server(server, {
   cors: { origin: "*", methods: ["GET", "POST"] }
 });
 
+// 정적 파일 제공
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.get('*', (req, res) => {
+// 와일드카드 경로 에러 방지를 위한 캐치올 미들웨어
+app.use((req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
