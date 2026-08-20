@@ -2,26 +2,29 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <title>1:1 익명 채팅</title>
+  <title>수공라이브</title>
   <style>
     body { font-family: sans-serif; max-width: 500px; margin: 20px auto; padding: 0 10px; }
     #chat { border: 1px solid #ccc; height: 300px; overflow-y: scroll; padding: 10px; margin-bottom: 10px; }
-    .developer { font-size: 0.85em; color: #666; margin-bottom: 15px; }
+    .developer { font-size: 0.85em; color: #666; margin-bottom: 5px; }
+    .user-count { font-weight: bold; color: #2b6cb0; margin-bottom: 15px; }
   </style>
 </head>
 <body>
-  <h2>1:1 랜덤 익명 채팅</h2>
-  <div class="developer">Developer: 이한률 (Lee Han-ryul)</div>
+  <h2>수공라이브</h2>
+  <div class="developer">Developer: HR</div>
+  <div class="user-count" id="userCount">현재 접속자: 0명</div>
   <div id="status">연결 중...</div>
   <div id="chat"></div>
   <input type="text" id="input" placeholder="메시지를 입력하세요" disabled autocomplete="off">
   <button id="sendBtn" disabled>전송</button>
 
-  <script src="/socket.io/socket.io.js"></script>
+  <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
   <script>
     const socket = io();
     const chat = document.getElementById('chat');
     const status = document.getElementById('status');
+    const userCount = document.getElementById('userCount');
     const input = document.getElementById('input');
     const sendBtn = document.getElementById('sendBtn');
 
@@ -31,6 +34,10 @@
       chat.appendChild(div);
       chat.scrollTop = chat.scrollHeight;
     }
+
+    socket.on('userCount', (count) => {
+      userCount.textContent = `현재 접속자: ${count}명`;
+    });
 
     socket.on('waiting', (msg) => { status.textContent = msg; });
     socket.on('matched', (msg) => {

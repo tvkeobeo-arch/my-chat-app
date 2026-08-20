@@ -4,13 +4,22 @@ const { Server } = require('socket.io');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  }
+});
 
 app.use(express.static('public'));
 
 let waitingUser = null;
+let onlineUsers = 0;
 
 io.on('connection', (socket) => {
+  onlineUsers++;
+  io.emit('userCount', onlineUsers);
+
   if (waitingUser) {
     const partner = waitingUser;
     waitingUser = null;
@@ -32,6 +41,9 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
+    onlineUsers--;
+    io.emit('userCount', onlineUsers);
+
     if (waitingUser === socket) {
       waitingUser = null;
     }
@@ -43,6 +55,6 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`[Developer: 이한률] 서버가 PORT ${PORT}에서 실행 중입니다.`);
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`[Developer: HR] 수공라이브 서버가 PORT ${PORT}에서 실행 중입니다.`);
 });
