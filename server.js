@@ -37,6 +37,15 @@ function saveUsers() {
 let waitingQueue = [];
 let onlineUsers = 0;
 let bannedIPs = new Set();
+let roomCounter = 1;
+let activeRooms = new Map(); // roomId -> { id, u1, u2, logs, hasWarning }
+
+// 감지할 금지어 단어장 (필요시 추가)
+const BAD_WORDS = ['시발', '씨발', '병신', '개새끼', '존나', '지랄', '섹스', '성교', '야동', '자지', '보지', '조건', '조건만남', '섹', '자위'];
+
+function checkBadWords(text) {
+  return BAD_WORDS.some(word => text.includes(word));
+}
 
 function getClientIp(socket) {
   const rawIp = socket.handshake.headers['x-forwarded-for'] || socket.handshake.address;
@@ -51,16 +60,28 @@ function matchQueue() {
     if (!user1.connected) { if (user2.connected) waitingQueue.unshift(user2); continue; }
     if (!user2.connected) { waitingQueue.unshift(user1); continue; }
 
+    const roomId = `방 #${roomCounter++}`;
+
     user1.partner = user2;
     user2.partner = user1;
+    user1.currentRoomId = roomId;
+    user2.currentRoomId = roomId;
+
+    const roomData = {
+      id: roomId,
+      u1: { id: user1.userId, ip: user1.ipAddr },
+      u2: { id: user2.userId, ip: user2.ipAddr },
+      logs: [],
+      hasWarning: false
+    };
+
+    activeRooms.set(roomId, roomData);
 
     user1.emit('matched');
     user2.emit('matched');
 
-    io.to('admin_room').emit('admin_match_event', {
-      u1: { id: user1.userId, ip: user1.ipAddr },
-      u2: { id: user2.userId, ip: user2.ipAddr }
-    });
+    // 관리자에게 방 생성 알림
+    io.to('admin_room').emit('admin_room_created', roomData);
   }
 }
 
@@ -72,8 +93,17 @@ function removeFromQueue(socket) {
 function disconnectPartner(socket) {
   if (socket.partner) {
     const partner = socket.partner;
+    const roomId = socket.currentRoomId;
+
+    if (roomId && activeRooms.has(roomId)) {
+      activeRooms.delete(roomId);
+      io.to('admin_room').emit('admin_room_destroyed', roomId);
+    }
+
     socket.partner = null;
+    socket.currentRoomId = null;
     partner.partner = null;
+    partner.currentRoomId = null;
     partner.emit('partnerDisconnected');
   }
 }
@@ -89,25 +119,28 @@ io.on('connection', (socket) => {
   }
 
   socket.on('register', ({ userId, userPw }) => {
-    if (!userId || !userPw) return socket.emit('auth_error', '아이디와 비밀번호를 모두 입력해 주세요.');
+    if (!userId || !userPw) return socket.emit('auth_error', '아이디와 비밀번호를 입력해 주세요.');
     if (users[userId]) return socket.emit('auth_error', '이미 존재하는 아이디입니다.');
     
     users[userId] = userPw;
     saveUsers();
-    socket.emit('register_success', '회원가입이 완료되었습니다! 로그인해 주세요.');
+    socket.emit('register_success', '회원가입 완료! 로그인하세요.');
   });
 
   socket.on('login', ({ userId, userPw }) => {
     if (!userId || !userPw) return socket.emit('auth_error', '아이디와 비밀번호를 입력해 주세요.');
     if (!users[userId]) return socket.emit('auth_error', '존재하지 않는 아이디입니다.');
-    if (users[userId] !== userPw) return socket.emit('auth_error', '비밀번호가 일치하지 않습니다.');
+    if (users[userId] !== userPw) return socket.emit('auth_error', '비밀번호가 불일치합니다.');
 
     socket.userId = userId;
 
     if (userId === '이한률' && userPw === '1218') {
       socket.isAdmin = true;
       socket.join('admin_room');
-      socket.emit('admin_login_success', { bannedIPs: Array.from(bannedIPs) });
+      socket.emit('admin_login_success', {
+        bannedIPs: Array.from(bannedIPs),
+        rooms: Array.from(activeRooms.values())
+      });
       return;
     }
 
@@ -116,7 +149,6 @@ io.on('connection', (socket) => {
     socket.emit('login_success', { userId });
   });
 
-  // 명시적 대화 시작
   socket.on('startChat', () => {
     if (!socket.userId || socket.isAdmin) return;
     disconnectPartner(socket);
@@ -127,15 +159,30 @@ io.on('connection', (socket) => {
   });
 
   socket.on('message', (msg) => {
-    if (socket.partner) {
+    if (socket.partner && socket.currentRoomId) {
       socket.partner.emit('message', msg);
-      io.to('admin_room').emit('admin_chat_log', {
-        fromId: socket.userId,
-        fromIp: socket.ipAddr,
-        toId: socket.partner.userId,
-        toIp: socket.partner.ipAddr,
-        msg: msg
-      });
+
+      const isBad = checkBadWords(msg);
+      const roomId = socket.currentRoomId;
+      const room = activeRooms.get(roomId);
+
+      if (room) {
+        const logEntry = {
+          fromId: socket.userId,
+          fromIp: socket.ipAddr,
+          msg: msg,
+          isBad: isBad,
+          time: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        };
+        room.logs.push(logEntry);
+        if (isBad) room.hasWarning = true;
+
+        io.to('admin_room').emit('admin_chat_update', {
+          roomId: roomId,
+          log: logEntry,
+          hasWarning: room.hasWarning
+        });
+      }
     }
   });
 

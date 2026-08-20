@@ -6,9 +6,10 @@
   <title>수공라이브</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, sans-serif; background: #e2e8f0; display: flex; justify-content: center; height: 100dvh; }
-    .app-container { width: 100%; max-width: 480px; height: 100dvh; background: #f4f6f8; display: flex; flex-direction: column; position: relative; }
+    body { font-family: -apple-system, sans-serif; background: #0f172a; display: flex; justify-content: center; height: 100dvh; }
+    .app-container { width: 100%; max-width: 900px; height: 100dvh; background: #1e293b; display: flex; flex-direction: column; position: relative; }
     
+    /* 인증 모달 */
     .auth-overlay { position: absolute; inset: 0; background: #0f172a; z-index: 100; display: flex; justify-content: center; align-items: center; padding: 20px; }
     .auth-card { background: #fff; width: 100%; max-width: 320px; padding: 24px; border-radius: 16px; display: flex; flex-direction: column; gap: 12px; text-align: center; }
     .auth-tabs { display: flex; border-bottom: 2px solid #e2e8f0; margin-bottom: 8px; }
@@ -17,7 +18,8 @@
     .auth-card input { width: 100%; height: 42px; padding: 0 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; }
     .auth-card button { height: 42px; background: #2563eb; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
 
-    .chat-screen { display: flex; flex-direction: column; height: 100%; width: 100%; }
+    /* 일반 채팅 UI */
+    .chat-screen { display: flex; flex-direction: column; height: 100%; width: 100%; max-width: 480px; margin: 0 auto; background: #f4f6f8; }
     .header { background: #1e293b; color: #fff; padding: 12px; display: flex; justify-content: space-between; align-items: center; }
     .brand h1 { font-size: 1.1rem; }
     .user-badge { font-size: 0.8rem; color: #38bdf8; background: #334155; padding: 4px 8px; border-radius: 6px; }
@@ -41,15 +43,35 @@
     .btn-next { flex: 1; background: #10b981; color: white; }
     .btn-leave { flex: 1; background: #ef4444; color: white; }
 
-    .admin-screen { display: none; flex-direction: column; height: 100%; width: 100%; background: #0f172a; color: #f8fafc; padding: 12px; }
-    .admin-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #ef4444; padding-bottom: 8px; margin-bottom: 12px; }
-    .admin-header h2 { color: #ef4444; font-size: 1.1rem; }
-    .admin-section { margin-bottom: 12px; background: #1e293b; padding: 10px; border-radius: 8px; }
-    .admin-section h3 { font-size: 0.85rem; color: #38bdf8; margin-bottom: 6px; }
-    .admin-logs { height: 260px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; font-size: 0.8rem; }
-    .log-item { background: #334155; padding: 8px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; }
-    .ban-btn { background: #ef4444; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 0.75rem; }
-    .unban-btn { background: #10b981; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 0.75rem; }
+    /* 관리자 모니터링 대시보드 (개편) */
+    .admin-screen { display: none; flex-direction: column; height: 100%; width: 100%; background: #0f172a; color: #f8fafc; padding: 16px; gap: 12px; }
+    .admin-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #ef4444; padding-bottom: 8px; }
+    .admin-header h2 { color: #ef4444; font-size: 1.2rem; }
+    
+    .admin-body { display: flex; flex: 1; gap: 12px; overflow: hidden; }
+    .room-list-panel { width: 320px; background: #1e293b; border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
+    .chat-view-panel { flex: 1; background: #1e293b; border-radius: 10px; padding: 12px; display: flex; flex-direction: column; }
+    
+    .room-card { background: #334155; padding: 12px; border-radius: 8px; cursor: pointer; border: 2px solid transparent; transition: all 0.2s; display: flex; justify-content: space-between; align-items: center; }
+    .room-card.active { border-color: #38bdf8; background: #475569; }
+    .room-card.warning { border-color: #ef4444 !important; background: #451a1a !important; animation: pulse 1.5s infinite; }
+    
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+      70% { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+    }
+
+    .room-info { font-size: 0.85rem; display: flex; flex-direction: column; gap: 2px; }
+    .room-title { font-weight: bold; font-size: 1rem; color: #f8fafc; display: flex; align-items: center; gap: 6px; }
+    .warn-badge { color: #ef4444; font-size: 1.1rem; }
+    
+    .admin-chat-box { flex: 1; background: #0f172a; border-radius: 8px; padding: 10px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+    .admin-log-item { background: #1e293b; padding: 8px; border-radius: 6px; font-size: 0.8rem; display: flex; flex-direction: column; gap: 4px; }
+    .admin-log-item.bad { border-left: 4px solid #ef4444; background: #2d1515; }
+    .admin-log-header { display: flex; justify-content: space-between; color: #94a3b8; font-size: 0.75rem; }
+    .ban-btn { background: #ef4444; color: white; border: none; padding: 2px 6px; border-radius: 4px; cursor: pointer; font-size: 0.7rem; }
+    .unban-btn { background: #10b981; color: white; border: none; padding: 2px 6px; border-radius: 4px; cursor: pointer; font-size: 0.7rem; }
   </style>
 </head>
 <body>
@@ -67,6 +89,7 @@
       </div>
     </div>
 
+    <!-- 일반 채팅 화면 -->
     <div class="chat-screen" id="chatScreen">
       <div class="header">
         <div class="brand"><h1>수공라이브</h1></div>
@@ -87,17 +110,32 @@
       </div>
     </div>
 
+    <!-- 관리자 통제 대시보드 (방 모니터링 개편) -->
     <div class="admin-screen" id="adminScreen">
       <div class="admin-header">
-        <h2>🛡️ 수공라이브 관리자 대시보드 (HR)</h2>
+        <h2>🛡️ 수공라이브 모니터링 관제센터</h2>
+        <div style="font-size: 0.85rem; color:#94a3b8;">개발자 통제 모드</div>
       </div>
-      <div class="admin-section">
-        <h3>실시간 대화 모니터링 & IP 차단</h3>
-        <div class="admin-logs" id="adminLogs"></div>
+      
+      <div class="admin-body">
+        <!-- 왼쪽: 활성 방 목록 -->
+        <div class="room-list-panel" id="roomListPanel">
+          <div style="font-size: 0.85rem; color:#94a3b8; font-weight:bold; margin-bottom:4px;">실시간 진행 방 목록</div>
+          <div id="roomContainer" style="display:flex; flex-direction:column; gap:8px;"></div>
+        </div>
+
+        <!-- 오른쪽: 선택한 방 채팅 로그 보기 -->
+        <div class="chat-view-panel">
+          <div id="selectedRoomTitle" style="font-weight:bold; font-size:1rem; color:#38bdf8;">방을 선택하세요</div>
+          <div id="selectedRoomUsers" style="font-size:0.8rem; color:#94a3b8; margin-top:2px;"></div>
+          <div class="admin-chat-box" id="adminChatBox"></div>
+        </div>
       </div>
-      <div class="admin-section">
-        <h3>차단된 IP 목록</h3>
-        <div id="bannedList" style="font-size:0.8rem; display:flex; flex-direction:column; gap:4px;"></div>
+
+      <!-- 하단: IP 차단 관리 -->
+      <div style="background:#1e293b; padding:8px 12px; border-radius:8px; font-size:0.8rem;">
+        <span style="color:#ef4444; font-weight:bold;">차단된 IP 목록:</span>
+        <span id="bannedList" style="margin-left:8px; color:#cbd5e1;">없음</span>
       </div>
     </div>
   </div>
@@ -106,6 +144,8 @@
   <script>
     const socket = io();
     let isRegisterMode = false;
+    let roomsData = {}; // roomId -> roomObj
+    let selectedRoomId = null;
 
     const authOverlay = document.getElementById('authOverlay');
     const tabLogin = document.getElementById('tabLogin');
@@ -126,7 +166,10 @@
     const nextBtn = document.getElementById('nextBtn');
     const leaveBtn = document.getElementById('leaveBtn');
 
-    const adminLogs = document.getElementById('adminLogs');
+    const roomContainer = document.getElementById('roomContainer');
+    const selectedRoomTitle = document.getElementById('selectedRoomTitle');
+    const selectedRoomUsers = document.getElementById('selectedRoomUsers');
+    const adminChatBox = document.getElementById('adminChatBox');
     const bannedList = document.getElementById('bannedList');
 
     tabLogin.addEventListener('click', () => {
@@ -164,83 +207,162 @@
       setIdleUI();
     });
 
+    // 관리자 로그인 완료
     socket.on('admin_login_success', (data) => {
       authOverlay.style.display = 'none';
       chatScreen.style.display = 'none';
       adminScreen.style.display = 'flex';
+      
+      data.rooms.forEach(r => { roomsData[r.id] = r; });
+      renderRoomList();
       renderBannedList(data.bannedIPs);
     });
 
-    // 상태 제어 함수
+    // 방 관리 함수
+    function renderRoomList() {
+      roomContainer.innerHTML = '';
+      const keys = Object.keys(roomsData);
+
+      if (keys.length === 0) {
+        roomContainer.innerHTML = '<div style="color:#64748b; font-size:0.8rem; text-align:center; padding:20px;">진행 중인 방이 없습니다.</div>';
+        return;
+      }
+
+      keys.forEach(id => {
+        const room = roomsData[id];
+        const card = document.createElement('div');
+        card.className = `room-card ${room.hasWarning ? 'warning' : ''} ${selectedRoomId === id ? 'active' : ''}`;
+        card.onclick = () => selectRoom(id);
+
+        card.innerHTML = `
+          <div class="room-info">
+            <div class="room-title">
+              ${room.hasWarning ? '<span class="warn-badge">🚨</span>' : ''}
+              ${room.id}
+            </div>
+            <div style="color:#94a3b8;">${room.u1.id} ↔ ${room.u2.id}</div>
+          </div>
+        `;
+        roomContainer.appendChild(card);
+      });
+    }
+
+    function selectRoom(id) {
+      selectedRoomId = id;
+      renderRoomList();
+      renderAdminChat();
+    }
+
+    function renderAdminChat() {
+      if (!selectedRoomId || !roomsData[selectedRoomId]) {
+        selectedRoomTitle.textContent = '방을 선택하세요';
+        selectedRoomUsers.textContent = '';
+        adminChatBox.innerHTML = '';
+        return;
+      }
+
+      const room = roomsData[selectedRoomId];
+      selectedRoomTitle.textContent = `${room.id} 실시간 감시`;
+      selectedRoomUsers.innerHTML = `
+        유저 1: <strong>${room.u1.id}</strong> (${room.u1.ip}) 
+        <button class="ban-btn" onclick="banIp('${room.u1.ip}')">IP차단</button> | 
+        유저 2: <strong>${room.u2.id}</strong> (${room.u2.ip})
+        <button class="ban-btn" onclick="banIp('${room.u2.ip}')">IP차단</button>
+      `;
+
+      adminChatBox.innerHTML = '';
+      room.logs.forEach(log => {
+        const item = document.createElement('div');
+        item.className = `admin-log-item ${log.isBad ? 'bad' : ''}`;
+        item.innerHTML = `
+          <div class="admin-log-header">
+            <span><strong>${log.fromId}</strong> (${log.fromIp})</span>
+            <span>${log.time}</span>
+          </div>
+          <div style="color:#f8fafc; font-size:0.85rem;">${log.msg}</div>
+        `;
+        adminChatBox.appendChild(item);
+      });
+      adminChatBox.scrollTop = adminChatBox.scrollHeight;
+    }
+
+    // 관리자 실시간 소켓 이벤트
+    socket.on('admin_room_created', (room) => {
+      roomsData[room.id] = room;
+      renderRoomList();
+    });
+
+    socket.on('admin_room_destroyed', (roomId) => {
+      delete roomsData[roomId];
+      if (selectedRoomId === roomId) selectedRoomId = null;
+      renderRoomList();
+      renderAdminChat();
+    });
+
+    socket.on('admin_chat_update', ({ roomId, log, hasWarning }) => {
+      if (roomsData[roomId]) {
+        roomsData[roomId].logs.push(log);
+        if (hasWarning) roomsData[roomId].hasWarning = true;
+        
+        renderRoomList();
+        if (selectedRoomId === roomId) {
+          renderAdminChat();
+        }
+      }
+    });
+
+    socket.on('admin_ban_updated', (list) => renderBannedList(list));
+
+    function renderBannedList(list) {
+      if (list.length === 0) {
+        bannedList.innerHTML = '없음';
+        return;
+      }
+      bannedList.innerHTML = list.map(ip => `
+        <span style="background:#334155; padding:2px 6px; border-radius:4px; margin-right:4px;">
+          ${ip} <button class="unban-btn" onclick="unbanIp('${ip}')">해제</button>
+        </span>
+      `).join('');
+    }
+
+    function banIp(ip) { socket.emit('admin_ban_ip', ip); }
+    function unbanIp(ip) { socket.emit('admin_unban_ip', ip); }
+
+    // 일반 채팅 기능
     function setIdleUI() {
       statusEl.textContent = '[대화 시작] 버튼을 누르면 상대방과 연결됩니다.';
-      msgInput.disabled = true;
-      sendBtn.disabled = true;
-      startBtn.disabled = false;
-      nextBtn.disabled = true;
-      leaveBtn.disabled = true;
+      msgInput.disabled = true; sendBtn.disabled = true;
+      startBtn.disabled = false; nextBtn.disabled = true; leaveBtn.disabled = true;
     }
 
     function setWaitingUI() {
       statusEl.textContent = '상대방을 찾는 중입니다...';
-      msgInput.disabled = true;
-      sendBtn.disabled = true;
-      startBtn.disabled = true;
-      nextBtn.disabled = true;
-      leaveBtn.disabled = false;
+      msgInput.disabled = true; sendBtn.disabled = true;
+      startBtn.disabled = true; nextBtn.disabled = true; leaveBtn.disabled = false;
     }
 
     function setMatchedUI() {
       statusEl.textContent = '상대방과 연결되었습니다!';
-      msgInput.disabled = false;
-      sendBtn.disabled = false;
-      startBtn.disabled = true;
-      nextBtn.disabled = false;
-      leaveBtn.disabled = false;
+      msgInput.disabled = false; sendBtn.disabled = false;
+      startBtn.disabled = true; nextBtn.disabled = false; leaveBtn.disabled = false;
       msgInput.focus();
     }
 
     function setEndedUI(reason) {
       statusEl.textContent = '대화가 종료되었습니다.';
-      msgInput.disabled = true;
-      sendBtn.disabled = true;
-      startBtn.disabled = false;
-      nextBtn.disabled = false;
-      leaveBtn.disabled = true;
+      msgInput.disabled = true; sendBtn.disabled = true;
+      startBtn.disabled = false; nextBtn.disabled = false; leaveBtn.disabled = true;
       appendSystemMsg(reason);
     }
 
-    startBtn.addEventListener('click', () => {
-      chatBox.innerHTML = '';
-      socket.emit('startChat');
-    });
+    startBtn.addEventListener('click', () => { chatBox.innerHTML = ''; socket.emit('startChat'); });
+    nextBtn.addEventListener('click', () => { chatBox.innerHTML = ''; socket.emit('findNext'); });
+    leaveBtn.addEventListener('click', () => { socket.emit('leave'); });
 
-    nextBtn.addEventListener('click', () => {
-      chatBox.innerHTML = '';
-      socket.emit('findNext');
-    });
-
-    leaveBtn.addEventListener('click', () => {
-      socket.emit('leave');
-    });
-
-    socket.on('waiting', () => {
-      setWaitingUI();
-      appendSystemMsg('대기열에 등록되었습니다.');
-    });
-
-    socket.on('matched', () => {
-      setMatchedUI();
-      appendSystemMsg('상대방과 연결되었습니다. 대화를 시작하세요!');
-    });
-
-    socket.on('partnerDisconnected', () => {
-      setEndedUI('상대방이 대화를 종료했습니다.');
-    });
-
-    socket.on('ended', () => {
-      setEndedUI('대화를 종료했습니다.');
-    });
+    socket.on('waiting', () => { setWaitingUI(); appendSystemMsg('대기열에 등록되었습니다.'); });
+    socket.on('matched', () => { setMatchedUI(); appendSystemMsg('상대방과 연결되었습니다. 대화를 시작하세요!'); });
+    socket.on('partnerDisconnected', () => setEndedUI('상대방이 대화를 종료했습니다.'));
+    socket.on('ended', () => setEndedUI('대화를 종료했습니다.'));
 
     function appendSystemMsg(text) {
       const div = document.createElement('div');
@@ -275,39 +397,6 @@
 
     sendBtn.addEventListener('click', send);
     msgInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') send(); });
-
-    // 관리자 이벤트
-    socket.on('admin_chat_log', (log) => {
-      const div = document.createElement('div');
-      div.className = 'log-item';
-      div.innerHTML = `
-        <div>
-          <strong>${log.fromId}</strong> (${log.fromIp}) ➔ <strong>${log.toId}</strong> (${log.toIp})<br>
-          <span style="color:#f1f5f9;">${log.msg}</span>
-        </div>
-        <button class="ban-btn" onclick="banIp('${log.fromIp}')">IP 차단</button>
-      `;
-      adminLogs.appendChild(div);
-      adminLogs.scrollTop = adminLogs.scrollHeight;
-    });
-
-    socket.on('admin_ban_updated', (list) => renderBannedList(list));
-
-    function renderBannedList(list) {
-      if (list.length === 0) {
-        bannedList.innerHTML = '<span style="color:#94a3b8;">차단된 IP가 없습니다.</span>';
-        return;
-      }
-      bannedList.innerHTML = list.map(ip => `
-        <div style="display:flex; justify-content:space-between; align-items:center; background:#334155; padding:6px; border-radius:4px;">
-          <span>${ip}</span>
-          <button class="unban-btn" onclick="unbanIp('${ip}')">차단 해제</button>
-        </div>
-      `).join('');
-    }
-
-    function banIp(ip) { socket.emit('admin_ban_ip', ip); }
-    function unbanIp(ip) { socket.emit('admin_unban_ip', ip); }
   </script>
 </body>
 </html>
